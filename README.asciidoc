@@ -1,0 +1,133 @@
+:toc:
+:toc-placement!:
+
+= SSL Certificate Configuration for StorageGRID
+
+To encrypt connections using TLS, StorageGRID requires an SSL Key. To allow clients to verify that the HTTPS endpoint they connect to can be trusted, an SSL Certificate is required which is signed by a Certification Authority the client trusts. More details can be found in the https://en.wikipedia.org/wiki/Public_key_certificate[Public key certificate Wikipedia article].
+
+StorageGRID requires two certificate. One certificate for the S3/Swift endpoint and one for the Management Interface. It is recommended to not use the same certificate for S3/Swift and Management Interface for security reasons.
+
+toc::[]
+
+== Create Certificate Signing Request
+
+The following commands require openssl which is usually available on all Linux and Mac OS X systems. All the commands can be executed when connected via SSH to the StorageGRID Admin Node.
+
+=== Creation of SSL Key
+
+First an SSL Key needs to be created to sign the certificate signing request. The SSL Key will later be used by StorageGRID to encrypt all traffic. For security reasons, the key length should be at least 2048. A larger key may significantly impact performance.
+
+.Create Certificate Key
+```
+openssl genrsa -out ssl.key 2048
+```
+
+The Certificate Key is highly confidential. Whoever has access to the Key may be able to decrypt SSL traffic or modify data exchanged between clients and the SSL endpoint. Therefore it is recommended to restrict access to the key to the current user with
+
+.Restrict access to the key
+```
+chmod 400 ssl.key
+```
+
+=== Creation of Certifcate Signing Request Template
+
+Create a Certificate Signing Request Template file called ssl.cnf with the following content. This allows to easily recreate certificates and document the values used for creating the certificate.
+
+The most important parts of the certificate are the Common Name (CN) and the https://en.wikipedia.org/wiki/Subject_Alternative_Name[Subject Alternative Names (SAN)]. The Common Name should be the main name of the certificate endpoint (e.g. s3.example.com). The Subject Alternative Names allow to specify alternative names for the endpoint. Modern clients do NOT check the Common Name, therefore the endpoint specified under Common Name must be included in the list of Subject Alternative Names.
+
+S3 endpoints can be accessed either using path or virtual-host style. For virtual-host style all buckets will be accessed as subdomains to the S3 endpoint (e.g. bucket.s3.example.com). Therefore it is required to add https://en.wikipedia.org/wiki/Wildcard_certificate[wildcard entries] (e.g. *.s3.example.com) in the Subject Alternative Names so that the certificate is valid for all subdomains (buckets) of the S3 endpoint.
+
+If clients should be able to connect to the hostname (s3) instead of the Full Qualified Domain Name (s3.example.com) then the hostname and wildcard entries for it must be included in the Subject Alternative Names.
+
+It is possible to specify IP Addresses in the Subject Alternative Names, but some old clients require them to start with `DNS` while newer clients require them to start with `IP`. Also IP Addresses do not support virtual-host style. It is recommended not to use IP addresses to connect to StorageGRID endpoints.
+
+Please modify everything in bold!
+
+.ssl.cnf
+[subs=+quotes]
+```
+[req]
+distinguished_name              = req_distinguished_name
+req_extensions                  = v3_req
+[req_distinguished_name]
+countryName                     = Country Name (2 letter code)
+countryName_default             = **DE**
+stateOrProvinceName             = State or Province Name (full name)
+stateOrProvinceName_default     = **Bavaria**
+localityName                    = Locality Name (eg, city)
+localityName_default            = **Munich**
+0.organizationName              = Organization Name (eg, company)
+0.organizationName_default      = **Customer**
+organizationalUnitName          = Organizational Unit Name (eg, section)
+organizationalUnitName_default  = **Organization**
+commonName                      = Common Name (e.g. server FQDN or YOUR name)
+commonName_default              = **s3.example.com**
+commonName_max                  = 64
+emailAddress                    = E-Mail Address
+emailAddress_max                = 64
+emailAddress_default            = **customer@example.com**
+[ v3_req ]
+subjectAltName = @alt_names
+[alt_names]
+DNS.1 =** s3.example.com**
+DNS.2 =** *.s3.example.com**
+DNS.3 =** s3**
+DNS.4 =** *.s3**
+```
+
+=== Creation of Certificate Signing Request
+
+The following command will create the Certificate Signing Request (ssl.pem) for a 10 year certificate using the previously created SSL key (ssl.key) and Certifcate Signing Request Template (ssl.cnf). The Expiration Date may be modified by the Certificate Authority when it signs the certificate.
+
+.Create Certificate Signing Request
+```
+openssl req -new -key ssl.key -out ssl.pem -days 3650 -config ssl.cnf
+```
+
+===	Validation of Certificate Signing Request
+
+The certificate can be validated with the following command. Check at least that Common Name (CN), Subject Alternative Names (SAN) and E-Mail Address are correct.
+
+.Valide Certificate Signing Request
+```
+openssl req -text -noout -in ssl.crt
+```
+
+=== Submit Certifcate Signing Request to a Certificate Authority
+
+To establish trust between clients and the SSL endpoint, the certificate needs to be signed by a Certification Authority trusted by the client. This can be a public Certification Authority like Verisign, Comodo, Thawte, Telekom or a private Certification Authority like Active Directory.
+ 
+The following demonstrates how to submit the Certificate Signing Request to a Microsoft Active Directory Certification Authority via the Web Interface. A similar approach will work for public Certification Authorities.
+
+1.	Open the Web Interface of the Active Directory Certification Authority, usually located at https://<domain-controller>/certsrv/
++
+image::ca.png[]
+2.	Click on Request a certificate
+3.	Click on “Submit a certificate request by using a base-64-encoded CMC or PKCS #10 file, or submit a renewal request by using a base-64-encoded PKCS #7 file.”
++
+image::advanced-certificate-request.png[]
+4.	Insert the content of the ssl.crt file into the text field for “Base-64-encoded certificate request”:
++
+image::submit-certificate-request.png[]
+5.	Select “Web Server 5 Yrs” or a similar Web Server template
+6.	Click on Submit
+7.	Your certificate may have to get approved. After the certificate is approved you will receive a link to download the certificate. If no approval is required, you will be directed to the certificate download page immediately.
+8.	Select “Base 64 encoded” (*very important!*)
++
+image::download-certificate.png[]
+9.	Download certificate (in this example named certnew.cer) and Download certificate chain (in this case named certnew.p7b)
+10.	Convert certificate chain to proper pem certificate chain
++
+```
+openssl pkcs7 -in certnew.p7b -print_certs -out chain.pem
+```
+11.	If you need the Root CA certificate (e.g. for AltaVault Enable Cloud CA Certificate on the Configure -> Cloud Settings), extract the last certificate from the chain.pem file with a text editor (starting and including `-----BEGIN CERTIFICATE-----` and ending and including `-----END CERTIFICATE-----`)
+
+=== Insert Certificate and Private Key into StorageGRID
+
+1.	Login to the StorageGRID Admin Webinterface as user with root privileges
+2.	Go to Configuration->Server Certificates
+3.	In the “Object Storage API Service Endpoints Server Certificate” section, click on “Install Custom Certificate”
+4.	Browse for Server Certificate (certnew.pem), Certificate Private Key (ssl.key) and the certificate chain (chain.pem) 
++
+image::install-certificate.png[]

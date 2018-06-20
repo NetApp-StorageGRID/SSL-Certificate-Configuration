@@ -90,7 +90,7 @@ The certificate can be validated with the following command. Check at least that
 
 .Valide Certificate Signing Request
 ```
-openssl req -text -noout -in ssl.crt
+openssl req -text -noout -in ssl.pem
 ```
 
 === Submit Certifcate Signing Request to a Certificate Authority

@@ -77,11 +77,11 @@ DNS.4 =** *.s3**
 
 === Creation of Certificate Signing Request
 
-The following command will create the Certificate Signing Request (ssl.pem) for a 10 year certificate using the previously created SSL key (ssl.key) and Certifcate Signing Request Template (ssl.cnf). The Expiration Date may be modified by the Certificate Authority when it signs the certificate.
+The following command will create the Certificate Signing Request (ssl.csr) for a 10 year certificate using the previously created SSL key (ssl.key) and Certifcate Signing Request Template (ssl.cnf). The Expiration Date may be modified by the Certificate Authority when it signs the certificate.
 
 .Create Certificate Signing Request
 ```
-openssl req -new -key ssl.key -out ssl.pem -days 3650 -config ssl.cnf
+openssl req -new -key ssl.key -out ssl.csr -days 3650 -config ssl.cnf
 ```
 
 ===	Validation of Certificate Signing Request
@@ -90,7 +90,16 @@ The certificate can be validated with the following command. Check at least that
 
 .Valide Certificate Signing Request
 ```
-openssl req -text -noout -in ssl.pem
+openssl req -text -noout -in ssl.csr
+```
+
+=== Copying Certificate Signing Request
+
+Output the content of the request to the console and copy it (including `-----BEGIN CERTIFICATE REQUEST-----` and `-----END CERTIFICATE REQUEST-----`) to your clipboard to paste it into the Certification Authority request form.
+
+.Output Certificate Signing Request
+```
+cat ssl.csr
 ```
 
 === Submit Certifcate Signing Request to a Certificate Authority
@@ -103,16 +112,16 @@ The following demonstrates how to submit the Certificate Signing Request to a Mi
 +
 image::ca.png[]
 2.	Click on Request a certificate
-3.	Click on “Submit a certificate request by using a base-64-encoded CMC or PKCS #10 file, or submit a renewal request by using a base-64-encoded PKCS #7 file.”
+3.	Click on "Submit a certificate request by using a base-64-encoded CMC or PKCS #10 file, or submit a renewal request by using a base-64-encoded PKCS #7 file."
 +
 image::advanced-certificate-request.png[]
-4.	Insert the content of the ssl.crt file into the text field for “Base-64-encoded certificate request”:
+4.	Insert the content of the ssl.crt file into the text field for "Base-64-encoded certificate request":
 +
 image::submit-certificate-request.png[]
-5.	Select “Web Server 5 Yrs” or a similar Web Server template
+5.	Select "Web Server 5 Yrs" or a similar Web Server template
 6.	Click on Submit
 7.	Your certificate may have to get approved. After the certificate is approved you will receive a link to download the certificate. If no approval is required, you will be directed to the certificate download page immediately.
-8.	Select “Base 64 encoded” (*very important!*)
+8.	Select "Base 64 encoded" (*very important!*)
 +
 image::download-certificate.png[]
 9.	Download certificate (in this example named certnew.cer) and Download certificate chain (in this case named certnew.p7b)
@@ -127,7 +136,7 @@ openssl pkcs7 -in certnew.p7b -print_certs -out chain.pem
 
 1.	Login to the StorageGRID Admin Webinterface as user with root privileges
 2.	Go to Configuration->Server Certificates
-3.	In the “Object Storage API Service Endpoints Server Certificate” section, click on “Install Custom Certificate”
+3.	In the "Object Storage API Service Endpoints Server Certificate" section, click on "Install Custom Certificate"
 4.	Browse for Server Certificate (certnew.pem), Certificate Private Key (ssl.key) and the certificate chain (chain.pem) 
 +
 image::install-certificate.png[]
